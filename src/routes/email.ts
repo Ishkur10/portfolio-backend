@@ -3,9 +3,9 @@ import { sendContactEmail } from '../controllers/email';
 
 const router = express.Router();
 
-// Usar una función intermedia para evitar problemas de tipos
-router.post('/send-email', async (req, res) => {
-  return await sendContactEmail(req, res);
+// Usando el tipo 'any' explícitamente para evitar problemas de inferencia
+router.post('/send-email', (req: any, res: any) => {
+  sendContactEmail(req, res);
 });
 
 router.get('/test', (req, res) => {
