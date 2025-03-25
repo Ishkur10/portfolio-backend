@@ -1,7 +1,6 @@
-// File: src/controllers/email.ts
-
+// src/controllers/email.ts
 import { Request, Response } from 'express';
-import nodemailer from 'nodemailer';
+import sgMail from '@sendgrid/mail';
 
 // Define the interface for the form data
 interface EmailRequestBody {
@@ -11,182 +10,114 @@ interface EmailRequestBody {
   message: string;
 }
 
-// Helper type to check for NodeMailer errors
-interface NodemailerError {
-  name: string;
-  message: string;
-  code?: string;
-}
-
-// Type guard to check if an error has the right properties
-function isNodemailerError(error: unknown): error is NodemailerError {
-  return (
-    typeof error === 'object' && 
-    error !== null && 
-    'message' in error &&
-    typeof (error as any).message === 'string'
-  );
-}
-
 export const sendContactEmail = async (req: Request, res: Response) => {
-  console.log('Recibida solicitud para enviar correo:', req.body);
+  console.log('Received contact form submission:', req.body);
   
   try {
     const { name, email, subject, message } = req.body as EmailRequestBody;
     
-    // Log configuration details to help with debugging
-    console.log('Email configuration:');
-    console.log(`- Using EMAIL_USER: ${process.env.EMAIL_USER?.substring(0, 3)}...`);
-    console.log(`- EMAIL_PASSWORD length: ${process.env.EMAIL_PASSWORD?.length || 0} characters`);
+    // Configure SendGrid with API key
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
     
-    // Create transporter with explicit configuration
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      },
-      tls: {
-        rejectUnauthorized: false
-      },
-      debug: true,
-      logger: true
-    });
+    // Log that we're using SendGrid (without exposing the key)
+    console.log('Using SendGrid for email delivery');
+    console.log(`- Sending to: ${process.env.EMAIL_USER}`);
     
-    // Verify connection before sending
-    try {
-      console.log('Verifying SMTP connection...');
-      await transporter.verify();
-      console.log('✓ SMTP connection successfully verified');
-    } catch (verifyError: unknown) {
-      console.error('✗ SMTP connection verification failed:', verifyError);
-      
-      // TypeScript-safe error handling
-      const errorMessage = isNodemailerError(verifyError) 
-        ? verifyError.message 
-        : 'Unknown error during SMTP verification';
-      
-      const errorCode = isNodemailerError(verifyError) && verifyError.code 
-        ? verifyError.code 
-        : 'UNKNOWN';
-      
-      return res.status(500).json({ 
-        error: 'Failed to connect to email server',
-        details: errorMessage,
-        code: errorCode
-      });
-    }
-    
-    // Configure email content
-    const mailOptions = {
-      from: `"Portfolio Contact" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_USER,
-      replyTo: email,
-      subject: subject || `Nuevo mensaje de ${name}`,
-      text: `Nombre: ${name}\nEmail: ${email}\nMensaje: ${message}`,
+    // Create the email message
+    const msg = {
+      to: process.env.EMAIL_USER || 'iliasouazani@gmail.com', // Your email
+      from: process.env.SENDGRID_VERIFIED_SENDER || 'iliasouazani@gmail.com', // Must be verified in SendGrid
+      subject: subject || `New message from ${name}`,
+      replyTo: email, // Allows you to reply directly to the sender
+      text: `Name: ${name}\nEmail: ${email}\nMessage: ${message}`,
       html: `
-        <h2>Nuevo mensaje de contacto</h2>
-        <p><strong>Nombre:</strong> ${name}</p>
+        <h2>New Contact Form Message</h2>
+        <p><strong>Name:</strong> ${name}</p>
         <p><strong>Email:</strong> ${email}</p>
-        <p><strong>Mensaje:</strong></p>
+        <p><strong>Message:</strong></p>
         <p>${message}</p>
       `
     };
     
-    // Send the email with detailed logging
-    console.log('Attempting to send email...');
-    const info = await transporter.sendMail(mailOptions);
+    // Send the email
+    console.log('Sending email via SendGrid...');
+    const response = await sgMail.send(msg);
     
-    console.log('✓ Email sent successfully!');
-    console.log(`- Message ID: ${info.messageId}`);
-    console.log(`- Response: ${info.response}`);
+    console.log('Email sent successfully!');
+    console.log(`- Status Code: ${response[0].statusCode}`);
+    console.log(`- Headers: ${JSON.stringify(response[0].headers)}`);
     
+    // Return success response
     res.status(200).json({ 
       success: true, 
-      messageId: info.messageId 
+      message: 'Email sent successfully'
     });
   } catch (error: unknown) {
-    // Comprehensive error logging with TypeScript safety
-    console.error('✗ Error sending email:');
+    // Handle errors properly
+    console.error('Failed to send email:', error);
     
-    if (isNodemailerError(error)) {
-      console.error(`- Error type: ${error.name}`);
-      console.error(`- Error message: ${error.message}`);
-      console.error(`- Error code: ${error.code || 'N/A'}`);
-      
-      // Additional SMTP-specific error handling
-      if (error.code === 'EAUTH') {
-        console.error('Authentication failed. Check your Gmail username and password.');
-      } else if (error.code === 'ESOCKET') {
-        console.error('Socket error. Check your connection and port settings.');
+    // Check for SendGrid-specific errors
+    if (error && typeof error === 'object' && 'response' in error) {
+      const sgError = error as any;
+      console.error('SendGrid API error details:');
+      if (sgError.response && sgError.response.body) {
+        console.error(JSON.stringify(sgError.response.body, null, 2));
       }
-    } else {
-      console.error('- Unknown error type:', error);
     }
     
-    const errorDetails = isNodemailerError(error) ? error.message : 'Unknown error';
-    const errorCode = isNodemailerError(error) && error.code ? error.code : 'UNKNOWN';
-    
+    // Return error response
     res.status(500).json({ 
       error: 'Error al enviar el correo',
-      details: errorDetails,
-      code: errorCode
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };
 
-// Add a test endpoint to directly test email functionality
+// Test endpoint to verify email configuration
 export const sendTestEmail = async (req: Request, res: Response) => {
   try {
-    console.log('Testing email functionality...');
+    console.log('Testing email functionality with SendGrid...');
     
-    // Use the same configuration as the contact form
-    const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD
-      },
-      tls: {
-        rejectUnauthorized: false
-      },
-      debug: true,
-      logger: true
-    });
+    // Configure SendGrid
+    sgMail.setApiKey(process.env.SENDGRID_API_KEY || '');
     
-    // Verify connection
-    await transporter.verify();
-    console.log('SMTP connection verified for test email');
-    
-    // Simple test message
-    const info = await transporter.sendMail({
-      from: `"Test Email" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_USER,
+    // Send a test email
+    const msg = {
+      to: process.env.EMAIL_USER || 'iliasouazani@gmail.com',
+      from: process.env.SENDGRID_VERIFIED_SENDER || 'iliasouazani@gmail.com',
       subject: 'Test Email from Portfolio Backend',
-      text: 'This is a test email. If you received this, your email configuration is working!',
-      html: '<h2>Test Email</h2><p>This is a test email. If you received this, your email configuration is working!</p><p>Time sent: ' + new Date().toISOString() + '</p>'
-    });
+      text: `This is a test email sent at ${new Date().toISOString()}`,
+      html: `
+        <h2>Test Email</h2>
+        <p>This is a test email from your portfolio backend.</p>
+        <p>If you received this, your email configuration is working!</p>
+        <p>Time sent: ${new Date().toLocaleString()}</p>
+      `
+    };
     
-    console.log('Test email sent:', info.messageId);
+    const response = await sgMail.send(msg);
+    console.log('Test email sent successfully!');
+    console.log(`- Status: ${response[0].statusCode}`);
+    
     res.status(200).json({ 
       success: true, 
-      messageId: info.messageId, 
-      response: info.response 
+      statusCode: response[0].statusCode,
+      message: 'Test email sent successfully'
     });
   } catch (error: unknown) {
     console.error('Failed to send test email:', error);
     
-    const errorDetails = isNodemailerError(error) ? error.message : 'Unknown error';
-    const errorCode = isNodemailerError(error) && error.code ? error.code : 'UNKNOWN';
+    // Detailed error for SendGrid errors
+    if (error && typeof error === 'object' && 'response' in error) {
+      const sgError = error as any;
+      if (sgError.response && sgError.response.body) {
+        console.error('SendGrid error details:', sgError.response.body);
+      }
+    }
     
     res.status(500).json({ 
-      error: 'Failed to send test email', 
-      details: errorDetails,
-      code: errorCode
+      error: 'Failed to send test email',
+      details: error instanceof Error ? error.message : 'Unknown error'
     });
   }
 };

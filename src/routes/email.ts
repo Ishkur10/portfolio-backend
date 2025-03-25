@@ -1,17 +1,16 @@
-// File: src/routes/email.ts
-
+// src/routes/email.ts
 import express from 'express';
 import { sendContactEmail, sendTestEmail } from '../controllers/email';
 
 const router = express.Router();
 
 // Regular contact form endpoint
-router.post('/send-email', (req: any, res: any) => {
+router.post('/send-email', (req, res) => {
   sendContactEmail(req, res);
 });
 
-// Add a test endpoint
-router.get('/test-email', (req: any, res: any) => {
+// Test email endpoint
+router.get('/test-email', (req, res) => {
   sendTestEmail(req, res);
 });
 
