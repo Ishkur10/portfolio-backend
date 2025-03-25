@@ -16,13 +16,16 @@ export const sendContactEmail = async (req: Request, res: Response) => {
     const { name, email, subject, message } = req.body as EmailRequestBody;
     
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      host: 'smtp.gmail.com',
+      port: 465,
+      secure: true, // use SSL
       auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASSWORD
       },
-      debug: true // Habilitar para logs detallados
+      debug: true
     });
+
     await transporter.verify();
     console.log('Server is ready to send messages');
     
