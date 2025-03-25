@@ -1,11 +1,18 @@
+// File: src/routes/email.ts
+
 import express from 'express';
-import { sendContactEmail } from '../controllers/email';
+import { sendContactEmail, sendTestEmail } from '../controllers/email';
 
 const router = express.Router();
 
-// Usando el tipo 'any' explícitamente para evitar problemas de inferencia
+// Regular contact form endpoint
 router.post('/send-email', (req: any, res: any) => {
   sendContactEmail(req, res);
+});
+
+// Add a test endpoint
+router.get('/test-email', (req: any, res: any) => {
+  sendTestEmail(req, res);
 });
 
 router.get('/test', (req, res) => {
